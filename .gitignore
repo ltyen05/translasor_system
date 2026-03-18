@@ -1,3 +1,31 @@
 touch .gitignore
 .env
 .env.*
+.env
+
+data/
+venv/
+__pycache__/
+*.pt
+*.bin
+venv/
+.venv/
+env/
+
+data/
+data/raw/
+data/processed/
+logs/
+*.log
+
+# ========================
+# OS files
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# IDE
+# ========================
+.vscode/
+.idea/
