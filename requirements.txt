@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+torch
+transformers
+sentence-transformers
+faiss-cpu
+sacrebleu
+bert-score
+pydantic
+langchain
+torch
+datasets
+scikit-learn
+accelerate

@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # Cấu hình cho AI Translator Service API
+  ai-translator-api:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_translator_core
+    ports:
+      - "8000:8000"
+    volumes:
+      # Map thư mục data ra ngoài để log database và vector store không bị mất khi restart container
+      - ./data:/app/data
+      # Map model directory nếu sử dụng model local để tránh tải lại nhiều lần
+      - ./models:/app/models
+    environment:
+      # Khai báo các biến môi trường cho AI models
+      - MODEL_EN_VI=Helsinki-NLP/opus-mt-en-vi
+      - MODEL_VI_EN=Helsinki-NLP/opus-mt-vi-en
+    restart: unless-stopped
+    # (Tùy chọn) Nếu server có GPU, kích hoạt runtime NVIDIA
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
