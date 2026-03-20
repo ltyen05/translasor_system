@@ -19,7 +19,7 @@ def fine_tune_model(
     target_lang: str = "vi"
 ):
     model_name = Config.MODEL_EN_VI if source_lang == "en" else Config.MODEL_VI_EN
-    output_dir = os.path.join(getattr(Config, "ADAPTERS_DIR", os.path.join(Config.BASE_DIR, "models", "adapters")), f"{source_lang}-{target_lang}", domain)
+    output_dir = os.path.join("src", "models", f"{source_lang}-{target_lang}", domain)    
     print(f"🚀 Loading Base Model: {model_name}...")
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -91,8 +91,12 @@ def fine_tune_model(
     # ✅ Training arguments
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
+        evaluation_strategy="no",   # ⚡ tắt eval cho nhanh
+        save_strategy="steps",     # 🔥 save theo step
+        save_steps=2000,           # cứ 2000 step lưu 1 lần
+
+        fp16=True,                 # 🚀 tăng tốc GPU
+        report_to="none",          # ❌ tắt wandb
 
         learning_rate=Config.LEARNING_RATE,
         per_device_train_batch_size=Config.BATCH_SIZE,
@@ -103,7 +107,6 @@ def fine_tune_model(
         predict_with_generate=False, # 🔴 TẮT CÁI NÀY: Dừng việc dịch thử toàn bộ Validation Set để tiết kiệm hàng giờ đồng hồ rác!
         generation_max_length=Config.MAX_LENGTH,
 
-        fp16=False,  # ⚠️ set True nếu có GPU
         logging_steps=50,
         save_total_limit=2
     )
