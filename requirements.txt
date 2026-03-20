@@ -12,3 +12,7 @@ torch
 datasets
 scikit-learn
 accelerate
+peft
+accelerate
+datasets
+optimum[onnxruntime]

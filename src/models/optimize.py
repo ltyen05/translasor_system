@@ -3,51 +3,65 @@ import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from src.config import Config
 
-def export_to_onnx(model_name: str = Config.MODEL_EN_VI, output_dir: str = "./models/onnx/en-vi"):
+try:
+    from optimum.onnxruntime import ORTModelForSeq2SeqLM
+    from peft import PeftModel
+except ImportError:
+    print("Vui lòng cài đặt optimum và peft: pip install optimum[onnxruntime] peft")
+    exit(1)
+
+def export_model_to_onnx(domain: str = "General", source_lang: str = "en", target_lang: str = "vi"):
     """
-    Tối ưu hóa Inference bằng cách chuyển đổi mô hình PyTorch sang định dạng ONNX.
-    ONNX (Open Neural Network Exchange) giúp giảm đáng kể Latency (đến 2-3x) 
-    khi chạy Inference trên cả CPU và GPU.
+    Hợp nhất LoRA Adapter (nếu có) vào Base Model, và xuất ra định dạng ONNX 
+    để tối đa hoá tốc độ nội suy.
     """
-    print(f"Loading Base Model for ONNX Export: {model_name}...")
+    model_name = Config.MODEL_EN_VI if source_lang == "en" else Config.MODEL_VI_EN
+    
+    onnx_output_dir = os.path.join(Config.BASE_DIR, "models", "onnx", f"{source_lang}-{target_lang}", domain)
+    os.makedirs(onnx_output_dir, exist_ok=True)
+    
+    print(f"⏳ Đang xử lý model {source_lang}-{target_lang} cho domain '{domain}'...")
+    
+    # 1. Load Base Model bằng PyTorch
+    print(" - Load Base Model...")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     
-    # Tạo thư mục đầu ra
-    os.makedirs(output_dir, exist_ok=True)
+    # 2. Xử lý LoRA nếu domain không phải là General
+    if domain != "General":
+        adapter_path = os.path.join(getattr(Config, "ADAPTERS_DIR", os.path.join(Config.BASE_DIR, "models", "adapters")), f"{source_lang}-{target_lang}", domain)
+        if os.path.exists(adapter_path):
+            print(f" - Load LoRA Adapter từ {adapter_path}...")
+            model = PeftModel.from_pretrained(model, adapter_path)
+            print(" - Hợp nhất (Merge) trọng số LoRA vào Base Model...")
+            model = model.merge_and_unload()
+        else:
+            print(f" ⚠️ Không tìm thấy Adapter cho {domain}, hệ thống sẽ lưu file ONNX cấu trúc mạng Base!")
+    else:
+        print(" - Bỏ qua LoRA (Đang xử lý Base Model - General)")
+
+    # 3. Lưu model tạm ra ổ cứng để Optimum có thể convert thành ONNX
+    temp_dir = os.path.join(Config.BASE_DIR, "models", "temp_merge")
+    model.save_pretrained(temp_dir)
+    tokenizer.save_pretrained(temp_dir)
     
-    # Ví dụ input cho model học hình dạng tensor (tracing)
-    dummy_input = tokenizer("This is a test sentence for ONNX export.", return_tensors="pt")
+    # 4. Xuất sang ONNX (Export)
+    print(f" - Bắt đầu quá trình Export sang ONNX (Mất khoảng vài phút)...")
+    ort_model = ORTModelForSeq2SeqLM.from_pretrained(temp_dir, export=True)
+    ort_model.save_pretrained(onnx_output_dir)
+    tokenizer.save_pretrained(onnx_output_dir)
     
-    onnx_path = os.path.join(output_dir, "model.onnx")
-    print(f"Exporting model to {onnx_path}...")
-    
-    # Lưu ý: Với họ model encoder-decoder (như mBART, MarianMT), việc export phức tạp hơn
-    # do có phần encoder và decoder riêng biệt. Ở đây dùng API chuẩn của PyTorch cho mục đích minh họa khái niệm.
-    # Trong thực tế với HuggingFace, nên dùng thư viện Optimum: 
-    # `optimum-cli export onnx --model Helsinki-NLP/opus-mt-en-vi models/onnx/en-vi`
-    
-    # Đoạn code dưới đây mô phỏng khái niệm tối ưu NFR-01 (Latency)
-    try:
-        # Example using torch.onnx.export (Giản lược cho Encoder)
-        torch.onnx.export(
-            model.get_encoder(),
-            (dummy_input["input_ids"], dummy_input["attention_mask"]),
-            os.path.join(output_dir, "encoder.onnx"),
-            input_names=["input_ids", "attention_mask"],
-            output_names=["last_hidden_state"],
-            dynamic_axes={
-                "input_ids": {0: "batch_size", 1: "sequence_length"},
-                "attention_mask": {0: "batch_size", 1: "sequence_length"},
-                "last_hidden_state": {0: "batch_size", 1: "sequence_length"}
-            },
-            opset_version=14,
-        )
-        print("✅ ONNX Export Successful (Encoder simulated)!")
-        print("Hint: Để dùng Optimum đầy đủ: pip install optimum[onnxruntime]")
-    except Exception as e:
-        print(f"Lỗi xuất ONNX (cần thư viện chuyên dụng cho Seq2Seq): {e}")
+    print(f"✅ Đã xuất ONNX thành công tại: {onnx_output_dir}!\n")
 
 if __name__ == "__main__":
-    # export_to_onnx()
-    pass
+    print("=== CÔNG CỤ TỐI ƯU HOÁ ONNX ===")
+    
+    # Tối ưu mặc định model General
+    export_model_to_onnx(domain="General", source_lang="en", target_lang="vi")
+    # export_model_to_onnx(domain="General", source_lang="vi", target_lang="en")
+    
+    # Ở đây tự động quét các domain bạn đã train:
+    for d in Config.SUPPORTED_DOMAINS:
+        adapter_en_vi = os.path.join(getattr(Config, "ADAPTERS_DIR", os.path.join(Config.BASE_DIR, "models", "adapters")), "en-vi", d)
+        if os.path.exists(adapter_en_vi):
+            export_model_to_onnx(domain=d, source_lang="en", target_lang="vi")

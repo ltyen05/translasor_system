@@ -44,7 +44,7 @@ async def translate_endpoint(request: TranslateRequest, background_tasks: Backgr
             )
         else:
             translated_text = baseline_translator.translate(
-                request.text, request.source_lang, request.target_lang
+                request.text, request.source_lang, request.target_lang, request.domain
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

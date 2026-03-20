@@ -20,9 +20,10 @@ class Config:
     
     # Training Config
     LEARNING_RATE = 2e-5
-    BATCH_SIZE = 16
+    BATCH_SIZE = 8
     NUM_EPOCHS = 3
     MAX_LENGTH = 256
     
     # Domains
-    SUPPORTED_DOMAINS = ["IT"]
+    SUPPORTED_DOMAINS = ["it", "medical", "business", "general"]
+    ADAPTERS_DIR = os.path.join(BASE_DIR, "models", "adapters")

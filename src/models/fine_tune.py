@@ -6,6 +6,7 @@ from transformers import (
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer
 )
+from peft import LoraConfig, get_peft_model, TaskType
 from datasets import load_dataset
 from src.config import Config
 from src.evaluation.metrics import calculate_bleu
@@ -13,13 +14,28 @@ from src.evaluation.metrics import calculate_bleu
 
 def fine_tune_model(
     dataset_dir: str,
-    model_name: str = Config.MODEL_EN_VI,
-    output_dir: str = "./models/fine_tuned/en-vi"
+    domain: str = "IT",
+    source_lang: str = "en",
+    target_lang: str = "vi"
 ):
+    model_name = Config.MODEL_EN_VI if source_lang == "en" else Config.MODEL_VI_EN
+    output_dir = os.path.join(getattr(Config, "ADAPTERS_DIR", os.path.join(Config.BASE_DIR, "models", "adapters")), f"{source_lang}-{target_lang}", domain)
     print(f"🚀 Loading Base Model: {model_name}...")
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    
+    # Configure LoRA Adapter
+    lora_config = LoraConfig(
+        r=8,
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj"],
+        lora_dropout=0.05,
+        bias="none",
+        task_type=TaskType.SEQ_2_SEQ_LM
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
     # ✅ Load dataset (train / valid / test)
     dataset = load_dataset("csv", data_files={
@@ -84,7 +100,7 @@ def fine_tune_model(
         num_train_epochs=Config.NUM_EPOCHS,
 
         weight_decay=0.01,
-        predict_with_generate=True,
+        predict_with_generate=False, # 🔴 TẮT CÁI NÀY: Dừng việc dịch thử toàn bộ Validation Set để tiết kiệm hàng giờ đồng hồ rác!
         generation_max_length=Config.MAX_LENGTH,
 
         fp16=False,  # ⚠️ set True nếu có GPU
@@ -98,8 +114,8 @@ def fine_tune_model(
         args=training_args,
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets["validation"],
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics
+        tokenizer=tokenizer
+        # Đã gỡ bỏ compute_metrics để tránh báo lỗi khi predict_with_generate=False
     )
 
     print(" === TRAINING START ===")
